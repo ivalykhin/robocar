@@ -1,10 +1,12 @@
 #include <AFMotor.h>
+#include <Servo.h>
 #include <DHT.h>
 
 
 // Инициируем моторы
 AF_DCMotor motor1(4);
 AF_DCMotor motor2(3);
+Servo servo1;
 
 // Пины
 #define TEMP_PIN 13 // номер пина, к которому подсоединен датчик температуры
@@ -19,7 +21,13 @@ DHT dht(TEMP_PIN, DHT22);
 float vcc = 0.0;  // Входящее напряжение
 char controlChar;  // Символ контроля
 long previousMillis = 0; // время, когда действие выполнялось последний раз
+long previousScanMillis = 0;
 long interval = 1000; // период ожидания следующего действия
+long scanInterval = 50;
+int pos = 0;
+int scanStep = 1;
+int sStep = 0;
+bool scan = false;
 
 float readVCC() {
   ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
@@ -62,6 +70,7 @@ void right() {
 
 void setup() {
   Serial.begin(9600);
+  servo1.attach(10);
   dht.begin();
 
   // Задаем максимальную скорость вращения моторов (аналог работы PWM)
@@ -69,6 +78,8 @@ void setup() {
   motor1.run(RELEASE);
   motor2.setSpeed(255);
   motor2.run(RELEASE);
+  servo1.write(0); //ставим вал под 0
+
 }
 
 void loop() {
@@ -77,6 +88,7 @@ void loop() {
   if (currentMillis - previousMillis > interval) {
     // сохраняем последний момент, когда выполнялось действие
     previousMillis = currentMillis;
+
     vcc = readVCC();
     Serial.print("VCC: ");
     Serial.println(vcc);
@@ -97,11 +109,28 @@ void loop() {
     }
   }
 
+  if (currentMillis - previousScanMillis > scanInterval) {
+    previousScanMillis = currentMillis;
+    if (scan) {
+      if (servo1.read() == 180) {
+        sStep = 0 - scanStep;
+      }
+      if (servo1.read() == 0) {
+        sStep = 0 + scanStep;
+      }
+      pos = pos + sStep;
+      servo1.write(pos);
+      Serial.println(servo1.read());
+    }
+
+  }
+
   if (Serial.available())
   {
     Serial.print("Command is ");
     controlChar = char(Serial.read());
     Serial.println(controlChar);
+    servo1.write(controlChar);
 
     // При символе "1" едем вперед
     if (controlChar == '1')
@@ -134,6 +163,18 @@ void loop() {
     {
       motor2.run(RELEASE);
       Serial.println("Streigt");
+    }
+    // При символе "6" сканируем
+    if (controlChar == '6')
+    {
+      scan = true;
+    }
+    // При символе "7" отмена сканирования
+    if (controlChar == '7')
+    {
+      scan = false;
+      pos = 0;
+      servo1.write(pos);
     }
   }
 }
